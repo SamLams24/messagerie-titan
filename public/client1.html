@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="./encryption.js"></script>
+    <script type="module">
+        import { startSession, sendMessage } from './auth.js'; 
+
+        // Connexion au serveur
+        const socket = io();
+
+        socket.on('connect', () => {
+            console.log('Client connecté au serveur Socket.IO avec ID:', socket.id);
+
+            // Créer une session pour cet utilisateur
+            startSession('user1', 'Alice').then(userInfo => {
+                console.log('Session démarrée pour', userInfo);
+
+                // Envoyer un message après un certain délai (par exemple 5 secondes)
+                setTimeout(() => {
+                    sendMessage('user1', 'user2', 'Hello Bob!');
+                    // Émission du message via Socket.IO
+                    //socket.emit('send_message', { senderId: 'user1', receiverId: 'user2', content: 'Hello Bob!' }); -->
+                    console.log(`message envoyé !`);
+                }, 5000);
+            });
+        });
+
+        // Réception de message
+        socket.on('receive_message', (messageDto) => {
+            console.log('Message reçu:', JSON.stringify(messageDto, null, 2));
+
+        });
+    </script>
+    <title>Client 1</title>
+</head>
+<body>
+    <h1>Client 1 (Alice)</h1>
+</body>
+</html>

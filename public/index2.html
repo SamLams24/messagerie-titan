@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Messaging</title>
+</head>
+<body>
+    <h1>Secure Messaging</h1>
+    <input type="text" id="message" placeholder="Enter your message" />
+    <button id="send">Send Message</button>
+    <ul id="messages"></ul>
+
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script>
+        const socket = io('http://localhost:3000');
+
+        let publicKey;
+        let privateKey;
+
+        // Génération de la paire de clés 
+        async function generateKeyPair() {
+            const keyPair = await window.crypto.subtle.generateKey(
+                {
+                    name: "RSA-OAEP",
+                    modulusLength: 2048,
+                    publicExponent: new Uint8Array([1, 0, 1]),
+                    hash: "SHA-256",
+                },
+                true,
+                ["encrypt", "decrypt"]
+            );
+            publicKey = keyPair.publicKey;
+            privateKey = keyPair.privateKey;
+            console.log(`${publicKey}, ${privateKey}`);
+            return keyPair;
+        }
+
+        generateKeyPair();
+
+        // Conversion de la clé publique 
+        async function exportPublicKey(key) {
+            const exported = await window.crypto.subtle.exportKey('spki', key);
+            return btoa(String.fromCharCode(...new Uint8Array(exported)));
+        }
+
+        // Chiffrement d'un message avec une clé pub
+        async function encryptMessage(publicKey, message) {
+            const encodedMessage = new TextEncoder().encode(message);
+            const encrypted = await window.crypto.subtle.encrypt(
+                { name: "RSA-OAEP" },
+                publicKey,
+                encodedMessage
+            );
+            return btoa(String.fromCharCode(...new Uint8Array(encrypted)));
+        }
+
+        // Déchiffrement d'un message avec une clé priv
+        async function decryptMessage(privateKey, encryptedMessage) {
+            const decodedMessage = new Uint8Array(atob(encryptedMessage).split('').map(char => char.charCodeAt(0)));
+            const decrypted = await window.crypto.subtle.decrypt(
+                { name: "RSA-OAEP" },
+                privateKey,
+                decodedMessage
+            );
+            return new TextDecoder().decode(decrypted);
+        }
+
+        // Génération des clés et envoi de la clé publique au serveur
+        generateKeyPair().then(async (keyPair) => {
+            const exportedPublicKey = await exportPublicKey(keyPair.publicKey);
+            socket.emit('register_key', { publicKey: exportedPublicKey });
+        });
+
+        // Envoi d'un message chiffré
+        document.getElementById('send').addEventListener('click', async () => {
+            const message = document.getElementById('message').value;
+            const receiverPublicKey = await fetchReceiverPublicKey();  // Obtenir la clé publique du destinataire
+
+            const encryptedMessage = await encryptMessage(receiverPublicKey, message);
+            socket.emit('send_message', { message: encryptedMessage });
+        });
+
+        // Réception et déchiffrement d'un message
+        socket.on('receive_message', async (data) => {
+            const decryptedMessage = await decryptMessage(privateKey, data.message);
+            const messagesList = document.getElementById('messages');
+            const newMessage = document.createElement('li');
+            newMessage.textContent = decryptedMessage;
+            messagesList.appendChild(newMessage);
+        });
+
+        // Récupérer la clé publique du destinataire
+        async function fetchReceiverPublicKey() {
+            try {
+                
+                const response = await fetch(`/api/getPublicKey/${userId}`);
+        
+                if (!response.ok) {
+                    throw new Error(`Erreur lors de la récupération de la clé publique pour l'utilisateur ${userId}`);
+                }
+        
+                // On suppose que la clé publique est envoyée en texte brut
+                const publicKey = await response.text();
+                return publicKey;
+            } catch (error) {
+                console.error('Erreur lors de la récupération de la clé publique:', error);
+                return null;
+            }
+        }
+    </script>
+</body>
+</html>
